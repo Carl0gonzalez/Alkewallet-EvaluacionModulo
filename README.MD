@@ -73,17 +73,17 @@ erDiagram
     datetime transaction_date
   }
 
-  MONEDA ||--o{ USUARIO : preferred
-  USUARIO ||--o{ SALDO_USUARIO_MONEDA : tiene
-  MONEDA ||--o{ SALDO_USUARIO_MONEDA : en
+  MONEDA ||--o{ USUARIO : "preferred"
+  USUARIO ||--o{ SALDO_USUARIO_MONEDA : "tiene"
+  MONEDA ||--o{ SALDO_USUARIO_MONEDA : "en"
 
-  MONEDA ||--o{ TASA_CAMBIO : from
-  MONEDA ||--o{ TASA_CAMBIO : to
+  MONEDA ||--o{ TASA_CAMBIO : "from"
+  MONEDA ||--o{ TASA_CAMBIO : "target"
 
-  USUARIO ||--o{ TRANSACCION : envia
-  USUARIO ||--o{ TRANSACCION : recibe
-  MONEDA ||--o{ TRANSACCION : moneda_origen
-  MONEDA ||--o{ TRANSACCION : moneda_destino
+  USUARIO ||--o{ TRANSACCION : "envia"
+  USUARIO ||--o{ TRANSACCION : "recibe"
+  MONEDA ||--o{ TRANSACCION : "moneda_origen"
+  MONEDA ||--o{ TRANSACCION : "moneda_destino"
 ```
 [file:389]
 

@@ -35,7 +35,7 @@ El comportamiento central del modelo es: **la moneda destino de una transferenci
 
 ### Diagrama entidad–relación (Mermaid)
 
-> Nota: en GitHub, evita usar la palabra `to` como etiqueta de relación en Mermaid ERD; por eso se usa `to_currency`.
+
 
 ```mermaid
 erDiagram

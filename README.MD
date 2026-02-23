@@ -1,34 +1,41 @@
 # AlkeWallet (MySQL 8) — Evaluación Módulo 3
 
-Este repositorio contiene el diseño e implementación de una base de datos relacional para una billetera virtual (**AlkeWallet**), incluyendo creación del esquema, carga de datos de prueba, consultas SQL y operación transaccional con conversión de moneda. [file:389]
+Repositorio de entrega que implementa una base de datos relacional para una billetera virtual (**AlkeWallet**) en **MySQL 8 / InnoDB**, con soporte multimoneda, tasas de cambio y transferencias transaccionales.
 
-## Objetivo
-Implementar una solución en MySQL 8 que permita:
-- Administrar usuarios y su **moneda preferida**. [file:389]
-- Registrar saldos por **(usuario, moneda)** para soportar multimoneda correctamente. [file:389]
-- Ejecutar transferencias donde la **moneda destino siempre es la moneda preferida del receptor**, aplicando **tasa de cambio** cuando corresponda y registrando la tasa usada. [file:389]
-
-## Concepto (resumen)
-Una base de datos relacional organiza información en tablas relacionadas por claves primarias y foráneas, facilitando consistencia, consultas complejas (`JOIN`) e integridad referencial. [file:389]
-
-## Comparativa breve (RDBMS)
-| Tipo | Ejemplos | Licencia/costo | Fortalezas típicas | Consideraciones |
-|---|---|---:|---|---|
-| Libres | PostgreSQL, MySQL Community, MariaDB, SQLite | Gratis | Bajo costo, comunidad, flexibilidad | Soporte comercial opcional |
-| Comerciales | Oracle DB, SQL Server (Enterprise), DB2 | Pago | Soporte enterprise, herramientas avanzadas | Costos de licencia/infra |
-[file:389]
+El comportamiento central del modelo es: **la moneda destino de una transferencia siempre es la moneda preferida del receptor** (aunque el emisor envíe en otra moneda).
 
 ---
 
-## Reglas funcionales implementadas
-- Cada usuario tiene una **moneda preferida**. [file:389]
-- La transferencia se origina en una moneda del emisor, pero la **moneda destino siempre es la moneda preferida del receptor**. [file:389]
-- El saldo se gestiona por **(usuario, moneda)**. [file:389]
-- Si la moneda de origen difiere de la destino, se usa una **tasa de cambio** y se registra la tasa utilizada en la transacción. [file:389]
+## Alcance y premisas
+
+- Cada usuario define una **moneda preferida** (`usuario.currency_id`).
+- El saldo se administra por **usuario y moneda** (`saldo_usuario_moneda`) para soportar multimoneda real.
+- Las conversiones se calculan mediante **tasas de cambio** `from_currency_id -> to_currency_id` (`tasa_cambio`).
+- Toda transferencia se audita en `transaccion`, registrando montos y tasa usada (`rate_used`, `amount_to`).
 
 ---
 
-## Diagrama entidad–relación (Mermaid)
+## Estructura del repositorio
+
+- `alkewallet.sql` (o `AlkeWallet.sql`): script principal con DDL, DML y objetos SQL (función/trigger/procedure/vista).
+- `README.md`: documentación de la solución (este archivo).
+- Evidencias (capturas): se agregan aparte para la entrega (creación de BD, `DESCRIBE`, consultas, ejecución de transferencias, etc.).
+
+---
+
+## Modelo de datos
+
+### Tablas
+
+- `moneda`: catálogo de monedas (`currency_symbol` único).
+- `usuario`: usuarios del sistema, incluye su moneda preferida (`currency_id`).
+- `saldo_usuario_moneda`: saldos por (usuario, moneda), con PK compuesta `(user_id, currency_id)`.
+- `tasa_cambio`: tasas de conversión por par `(from_currency_id, to_currency_id)` con restricción única.
+- `transaccion`: registro de transferencias, guardando moneda origen/destino, tasa usada y montos.
+
+### Diagrama entidad–relación (Mermaid)
+
+> Nota: en GitHub, evita usar la palabra `to` como etiqueta de relación en Mermaid ERD; por eso se usa `to_currency`.
 
 ```mermaid
 erDiagram
@@ -78,63 +85,84 @@ erDiagram
   MONEDA ||--o{ SALDO_USUARIO_MONEDA : "en"
 
   MONEDA ||--o{ TASA_CAMBIO : "from"
-  MONEDA ||--o{ TASA_CAMBIO : "target"
+  MONEDA ||--o{ TASA_CAMBIO : "to_currency"
 
   USUARIO ||--o{ TRANSACCION : "envia"
   USUARIO ||--o{ TRANSACCION : "recibe"
   MONEDA ||--o{ TRANSACCION : "moneda_origen"
   MONEDA ||--o{ TRANSACCION : "moneda_destino"
 ```
-[file:389]
 
 ---
 
-## Contenido del repositorio
-- `AlkeWallet.sql`: script completo con DDL, DML, función, trigger, procedimiento, consultas y vista top‑5. [file:389]
-- Evidencias (capturas): se agregan según corresponda (creación BD, `DESCRIBE`, resultados de consultas, etc.).
+## Lógica implementada (en el SQL)
+
+El script incorpora lógica para asegurar que la premisa de moneda destino se cumpla de forma consistente:
+
+- **Función `fx_rate(p_from, p_to)`**: consulta `tasa_cambio` y devuelve la tasa vigente del par (from -> to).
+- **Trigger `bi_transaccion_enforce_calc` (BEFORE INSERT en `transaccion`)**:
+  - Forza `NEW.to_currency_id` a la moneda preferida del receptor.
+  - Calcula `NEW.rate_used` y `NEW.amount_to` usando `fx_rate`.
+- **Procedure `sp_transfer(...)`**:
+  - Ejecuta la transferencia con control transaccional (START TRANSACTION / COMMIT).
+  - Valida saldo suficiente del emisor en moneda origen.
+  - Acredita al receptor en su moneda preferida y registra la transacción.
+- **Vista `vw_top5_saldo_clp`**:
+  - Ranking top‑5 por saldo equivalente en CLP (conversión usando `fx_rate`).
 
 ---
 
-## Ejecución rápida
+## Ejecución (DBeaver / MySQL 8)
 
 ### Requisitos
-- MySQL 8.x (local o remoto).
-- Cliente SQL (DBeaver, MySQL Shell, consola `mysql`, etc.).
+- MySQL 8.x
+- DBeaver (u otro cliente SQL)
 
-### 1) Crear esquema y datos
-Ejecuta el script `AlkeWallet.sql` en tu cliente SQL.
+### Cómo ejecutar
+1. Abrir el archivo `alkewallet.sql` en DBeaver.
+2. Ejecutar como **SQL Script** (no como “Execute statement”), porque el archivo utiliza `DELIMITER $$` para crear función, trigger y procedure.
 
-Comandos útiles para evidencias:
-- `SHOW DATABASES;` para listar bases. [file:389]
-- `SHOW TABLES;` para listar tablas del esquema activo. [file:389]
-- `DESCRIBE <tabla>;` para ver estructura. [web:191]
-- `SHOW CREATE TABLE <tabla>;` para ver el DDL final (útil para capturas). [web:245]
+### Comandos útiles para evidencias
+Estos comandos están incluidos al final del script (o son consistentes con él) y sirven para capturas:
 
-> Nota: si tu servidor tiene *binary logging* habilitado, la creación de funciones puede requerir habilitar `log_bin_trust_function_creators` como administrador. (Esto se detecta por error 1419).
+- `SHOW DATABASES;`
+- `SHOW TABLES;`
+- `DESCRIBE usuario;` (y otras tablas)
+- `SHOW CREATE TABLE usuario;`
+- `SHOW CREATE TABLE transaccion;`
 
-### 2) Probar transferencias
-El script incluye llamadas de ejemplo a `sp_transfer(...)` y consultas para verificar:
-- Saldos actualizados.
-- Registro en tabla `transaccion` con `rate_used` y `amount_to`. [file:389]
+### Nota: Error 1419 (binary logging)
+Si al crear la función aparece el error **1419** (“binary logging is enabled…”), el servidor MySQL requiere habilitar `log_bin_trust_function_creators` con un usuario administrador y re-ejecutar el bloque de creación de rutinas.
+
+---
+
+## Pruebas incluidas en el script
+
+El script contiene transacciones de ejemplo ejecutando `CALL sp_transfer(...)` para validar:
+- Descuento de saldo al emisor en moneda origen.
+- Conversión a moneda preferida del receptor.
+- Registro en `transaccion` con tasa usada (`rate_used`) y monto destino (`amount_to`).
 
 ---
 
 ## Consultas incluidas (resumen)
-- `SELECT` básico y filtros `WHERE`. [file:389]
-- `JOIN` para obtener moneda preferida del usuario. [file:389]
-- Listado completo de transacciones con datos de emisor/receptor y monedas. [file:389]
-- Agregaciones (`COUNT`) y subconsulta para participación por usuario. [file:389]
-- Vista `vw_top5_saldo_clp` para ranking top‑5 por saldo equivalente en CLP. [file:389]
+
+Incluye consultas para:
+- Listar usuarios y filtrar por `WHERE`.
+- Obtener moneda preferida via `JOIN` entre `usuario` y `moneda`.
+- Listar transacciones con joins múltiples (emisor, receptor, moneda origen y destino).
+- Agregaciones (`COUNT`) y subconsulta de participaciones.
+- Vista de ranking `vw_top5_saldo_clp`.
 
 ---
 
 ## Resultados esperados
-- El `JOIN` usuario–moneda devuelve la moneda preferida por usuario. [file:389]
-- `sp_transfer` descuenta saldo al emisor en moneda origen, convierte con `tasa_cambio` y acredita al receptor en su moneda preferida. [file:389]
-- `transaccion` registra `rate_used` y `amount_to` como auditoría de conversión. [file:389]
-- La vista `vw_top5_saldo_clp` permite ranking unificado en CLP equivalente. [file:389]
+
+- La moneda destino en `transaccion.to_currency_id` coincide con la moneda preferida del receptor.
+- `sp_transfer` aplica conversión y deja auditoría de la tasa en `rate_used`.
+- La vista `vw_top5_saldo_clp` permite comparar saldos de usuarios en una moneda común (CLP equivalente).
 
 ---
 
 ## Autor
-Carlo Javier González Rojas. [file:389]
+Carlo Javier González Rojas
